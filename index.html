@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Macro charts</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f6f7f8;
+    color: #1c1c1c;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  header { padding: 20px 16px 8px; }
+  header h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  header p { margin: 0; color: #5c6570; font-size: 0.9rem; }
+  main { padding: 8px 12px 40px; display: flex; flex-direction: column; gap: 12px; }
+  section {
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px 10px 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  h2 { font-size: 12px; margin: 0 12px 2px; font-weight: 600; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px 14px;
+    margin: 6px 12px 8px; font-size: 9px; color: #444;
+  }
+  .sw {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 1.5px; margin-right: 4px; vertical-align: 0;
+  }
+  .chart-wrap { position: relative; touch-action: none; }
+  svg { width: 100%; height: auto; display: block; }
+  .cursor-line {
+    stroke: #666; stroke-width: 1.5; stroke-dasharray: 4 4; pointer-events: none;
+  }
+  #tip {
+    position: fixed; z-index: 10; display: none; max-width: min(260px, 80vw);
+    background: #1c1c1c; color: #fff; font-size: 0.88rem; line-height: 1.4;
+    padding: 10px 12px; border-radius: 10px; pointer-events: none;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  #tip .day { font-weight: 600; margin-bottom: 2px; }
+  @media (min-width: 800px) { main { max-width: 860px; margin: 0 auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Logged days: Oct 2 – Oct 5</h1>
+  <p>Slide across a chart. The dotted line snaps to a day and shows the numbers. All closed days so far: Fri 2 through Mon 5.</p>
+</header>
+<main>
+  <section>
+    <h2>Daily calories and protein</h2>
+    <div class="legend">
+      <span><i class="sw" style="background:#2e7d5a"></i>Calories (kcal)</span>
+      <span><i class="sw" style="background:#e07a3d"></i>Protein (g)</span>
+      <span><i class="sw" style="background:#d7eadc"></i>1,200–1,400 kcal</span>
+    </div>
+    <div class="chart-wrap" id="wrap-bars"><svg id="bars" viewBox="0 0 720 340"></svg></div>
+  </section>
+  <section>
+    <h2>7-day rolling average daily calorie intake</h2>
+    <div class="legend">
+      <span><i class="sw" style="background:#2e7d5a;border-radius:50%"></i>kcal</span>
+      <span><i class="sw" style="background:#d6e8f8"></i>1,200–1,400 kcal</span>
+    </div>
+    <div class="chart-wrap" id="wrap-kcal"><svg id="kcal" viewBox="0 0 720 320"></svg></div>
+  </section>
+  <section>
+    <h2>Protein and fat as % of daily target</h2>
+    <div class="legend">
+      <span><i class="sw" style="background:#e07a3d;border-radius:50%"></i>Protein (115 g)</span>
+      <span><i class="sw" style="background:#3d5a99;border-radius:50%"></i>Fat (40 g)</span>
+    </div>
+    <div class="chart-wrap" id="wrap-pct"><svg id="pct" viewBox="0 0 720 320"></svg></div>
+  </section>
+</main>
+<div id="tip"></div>
+<script>
+const days = ["Fri 2","Sat 3","Sun 4","Mon 5"];
+const logged = {
+  "Fri 2": { kcal: 1510, protein: 130, fat: 62 },
+  "Sat 3": { kcal: 825, protein: 95, fat: 20 },
+  "Sun 4": { kcal: 1238, protein: 130, fat: 42 },
+  "Mon 5": { kcal: 2062, protein: 143, fat: 94 }
+};
+const tip = document.getElementById("tip");
+let activeTip = null;
+function showTipAt(clientX, clientY, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  tip.style.left = "0px"; tip.style.top = "0px";
+  const r = tip.getBoundingClientRect(), pad = 14;
+  let x = clientX + pad, y = clientY - r.height - 12;
+  if (x + r.width > innerWidth - 8) x = clientX - r.width - pad;
+  if (x < 8) x = 8;
+  if (y < 8) y = clientY + pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; activeTip = null; }
+function ns(name, attrs={}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+function text(svg, x, y, str, extra={}) {
+  const t = ns("text", Object.assign({x,y,"font-size":12,fill:"#444","font-family":"inherit"}, extra));
+  t.textContent = str; svg.appendChild(t); return t;
+}
+function svgPoint(svg, clientX, clientY) {
+  const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+function attachScrub(wrap, svg, slots) {
+  let cursor = ns("line", {class:"cursor-line", x1:0, x2:0, y1:slots.T, y2:slots.B, visibility:"hidden"});
+  svg.appendChild(cursor);
+  let dragging = false, lastIdx = -1;
+  function nearest(svgX) {
+    let best=0, bestD=Infinity;
+    slots.points.forEach((p,i)=>{ const d=Math.abs(p.x-svgX); if(d<bestD){bestD=d;best=i;} });
+    return best;
+  }
+  function activate(idx, clientX, clientY) {
+    const p = slots.points[idx];
+    cursor.setAttribute("x1", p.x); cursor.setAttribute("x2", p.x); cursor.setAttribute("visibility","visible");
+    if (slots.onActivate) slots.onActivate(idx, lastIdx);
+    lastIdx = idx; activeTip = wrap; showTipAt(clientX, clientY, p.html);
+  }
+  function clear() {
+    cursor.setAttribute("visibility","hidden");
+    if (slots.onClear) slots.onClear();
+    lastIdx = -1; if (activeTip === wrap) hideTip();
+  }
+  function clientFrom(e) {
+    if (e.touches && e.touches[0]) return {x:e.touches[0].clientX,y:e.touches[0].clientY};
+    return {x:e.clientX,y:e.clientY};
+  }
+  wrap.addEventListener("pointerdown", e => {
+    dragging = true; wrap.setPointerCapture?.(e.pointerId);
+    const c = clientFrom(e); activate(nearest(svgPoint(svg,c.x,c.y).x), c.x, c.y);
+  });
+  wrap.addEventListener("pointermove", e => {
+    if (!dragging) return; e.preventDefault();
+    const c = clientFrom(e); activate(nearest(svgPoint(svg,c.x,c.y).x), c.x, c.y);
+  });
+  wrap.addEventListener("pointerup", () => { dragging = false; });
+  wrap.addEventListener("pointercancel", () => { dragging = false; clear(); });
+  wrap.addEventListener("pointerleave", () => { if (!dragging) clear(); });
+  document.addEventListener("pointerdown", e => { if (!wrap.contains(e.target) && activeTip===wrap) clear(); });
+}
+function rolling() {
+  const out=[]; let sum=0,n=0;
+  days.forEach(d=>{ if(!logged[d]){out.push(null);return;} sum+=logged[d].kcal; n++; out.push(Math.round(sum/n)); });
+  return out;
+}
+function drawBars() {
+  const svg=document.getElementById("bars");
+  const L=52,R=668,T=18,B=286,yMax=2400,pMax=180;
+  const y=v=>T+(yMax-v)/yMax*(B-T), yp=v=>T+(pMax-v)/pMax*(B-T);
+  svg.appendChild(ns("rect",{x:L,y:y(1400),width:R-L,height:y(1200)-y(1400),fill:"#d7eadc"}));
+  for(let v=0;v<=2400;v+=400){
+    svg.appendChild(ns("line",{x1:L,y1:y(v),x2:R,y2:y(v),stroke:"#eee"}));
+    text(svg,6,y(v)+4,String(v),{"font-size":11,fill:"#777"});
+    text(svg,R+8,yp(v/yMax*pMax)+4,String(Math.round(v/yMax*pMax)),{"font-size":11,fill:"#c46a30"});
+  }
+  svg.appendChild(ns("line",{x1:L,y1:T,x2:L,y2:B,stroke:"#222","stroke-width":1.5}));
+  svg.appendChild(ns("line",{x1:L,y1:B,x2:R,y2:B,stroke:"#222","stroke-width":1.5}));
+  const slot=(R-L)/days.length, points=[], dayBars=days.map(()=>[]);
+  days.forEach((d,i)=>{
+    const cx=L+slot*(i+0.5);
+    text(svg,cx,B+22,d,{"text-anchor":"middle","font-size":12});
+    const row=logged[d];
+    if(row){
+      const bw=18;
+      const kb=ns("rect",{x:cx-bw-2,y:y(row.kcal),width:bw,height:B-y(row.kcal),fill:"#2e7d5a",rx:2});
+      const pb=ns("rect",{x:cx+2,y:yp(row.protein),width:bw,height:B-yp(row.protein),fill:"#e07a3d",rx:2});
+      svg.appendChild(kb); svg.appendChild(pb); dayBars[i]=[kb,pb];
+      text(svg,cx-bw-2+bw/2,y(row.kcal)-6,String(row.kcal),{"text-anchor":"middle","font-size":11,fill:"#2e7d5a","font-weight":"600"});
+      text(svg,cx+2+bw/2,yp(row.protein)-6,String(row.protein),{"text-anchor":"middle","font-size":11,fill:"#e07a3d","font-weight":"600"});
+      points.push({x:cx,html:`<div class="day">${d}</div>${row.kcal.toLocaleString()} kcal<br>${row.protein} g protein`});
+    } else points.push({x:cx,html:`<div class="day">${d}</div>Not logged`});
+  });
+  attachScrub(document.getElementById("wrap-bars"), svg, {
+    T,B,points,
+    onActivate(idx){ dayBars.forEach((pair,i)=>pair.forEach(b=>b.setAttribute("opacity",i===idx?"1":"0.3"))); },
+    onClear(){ dayBars.forEach(pair=>pair.forEach(b=>b.setAttribute("opacity","1"))); }
+  });
+}
+function drawKcal() {
+  const svg=document.getElementById("kcal");
+  const L=52,R=680,T=16,B=270,yMin=600,yMax=2400;
+  const y=v=>T+(yMax-v)/(yMax-yMin)*(B-T);
+  svg.appendChild(ns("rect",{x:L,y:y(1400),width:R-L,height:y(1200)-y(1400),fill:"#d6e8f8"}));
+  for(let v=600;v<=2400;v+=300){
+    svg.appendChild(ns("line",{x1:L,y1:y(v),x2:R,y2:y(v),stroke:"#eee"}));
+    text(svg,4,y(v)+4,v.toLocaleString(),{"font-size":11,fill:"#777"});
+  }
+  svg.appendChild(ns("line",{x1:L,y1:T,x2:L,y2:B,stroke:"#222","stroke-width":1.5}));
+  svg.appendChild(ns("line",{x1:L,y1:B,x2:R,y2:B,stroke:"#222","stroke-width":1.5}));
+  const labels=days.filter(d=>logged[d]);
+  const values=rolling().filter(v=>v!=null);
+  const pts=labels.map((lab,i)=>({x:L+(R-L)*(labels.length===1?0.5:i/(labels.length-1)), y:y(values[i]), lab, v:values[i]}));
+  labels.forEach((lab,i)=>text(svg,pts[i].x,B+22,lab,{"text-anchor":"middle"}));
+  if(pts.length>1) svg.appendChild(ns("polyline",{points:pts.map(p=>`${p.x},${p.y}`).join(" "),fill:"none",stroke:"#2e7d5a","stroke-width":2.5}));
+  const dots=[];
+  pts.forEach(p=>{
+    const d=ns("circle",{cx:p.x,cy:p.y,r:5,fill:"#2e7d5a"}); svg.appendChild(d); dots.push(d);
+    text(svg,p.x,p.y-12,p.v.toLocaleString(),{"text-anchor":"middle","font-size":12,fill:"#2e7d5a","font-weight":"600"});
+  });
+  attachScrub(document.getElementById("wrap-kcal"), svg, {
+    T,B, points:pts.map(p=>({x:p.x,html:`<div class="day">${p.lab}</div>Rolling avg ${p.v.toLocaleString()} kcal`})),
+    onActivate(idx){ dots.forEach((d,i)=>{d.setAttribute("r",i===idx?7:5);d.setAttribute("opacity",i===idx?"1":"0.4");}); },
+    onClear(){ dots.forEach(d=>{d.setAttribute("r","5");d.setAttribute("opacity","1");}); }
+  });
+}
+function drawPct() {
+  const svg=document.getElementById("pct");
+  const L=52,R=680,T=16,B=270,yMin=0,yMax=260;
+  const y=v=>T+(yMax-v)/(yMax-yMin)*(B-T);
+  for(let v=0;v<=260;v+=50){
+    svg.appendChild(ns("line",{x1:L,y1:y(v),x2:R,y2:y(v),stroke:"#eee"}));
+    text(svg,4,y(v)+4,v+"%",{"font-size":11,fill:"#777"});
+  }
+  svg.appendChild(ns("line",{x1:L,y1:y(100),x2:R,y2:y(100),stroke:"#b7c9b4","stroke-width":1.5}));
+  svg.appendChild(ns("line",{x1:L,y1:T,x2:L,y2:B,stroke:"#222","stroke-width":1.5}));
+  svg.appendChild(ns("line",{x1:L,y1:B,x2:R,y2:B,stroke:"#222","stroke-width":1.5}));
+  const labels=days.filter(d=>logged[d]);
+  const protein=labels.map(d=>Math.round(logged[d].protein/115*100));
+  const fat=labels.map(d=>Math.round(logged[d].fat/40*100));
+  const xs=labels.map((_,i)=>L+(R-L)*(labels.length===1?0.5:i/(labels.length-1)));
+  labels.forEach((lab,i)=>text(svg,xs[i],B+22,lab,{"text-anchor":"middle"}));
+  function series(vals,color,off){
+    const pts=vals.map((v,i)=>({x:xs[i],y:y(v),v}));
+    if(pts.length>1) svg.appendChild(ns("polyline",{points:pts.map(p=>`${p.x},${p.y}`).join(" "),fill:"none",stroke:color,"stroke-width":2.5}));
+    const dots=[];
+    pts.forEach(p=>{ const d=ns("circle",{cx:p.x,cy:p.y,r:5,fill:color}); svg.appendChild(d); dots.push(d);
+      text(svg,p.x,p.y+off,p.v+"%",{"text-anchor":"middle","font-size":12,fill:color,"font-weight":"600"}); });
+    return dots;
+  }
+  const pDots=series(protein,"#e07a3d",-12), fDots=series(fat,"#3d5a99",18);
+  attachScrub(document.getElementById("wrap-pct"), svg, {
+    T,B, points:labels.map((lab,i)=>({x:xs[i],html:`<div class="day">${lab}</div>Protein ${protein[i]}%<br>Fat ${fat[i]}%`})),
+    onActivate(idx){ [...pDots,...fDots].forEach((d,i)=>{ const which=i<pDots.length?i:i-pDots.length; d.setAttribute("r",which===idx?7:5); d.setAttribute("opacity",which===idx?"1":"0.35"); }); },
+    onClear(){ [...pDots,...fDots].forEach(d=>{d.setAttribute("r","5");d.setAttribute("opacity","1");}); }
+  });
+}
+drawBars(); drawKcal(); drawPct();
+</script>
+</body>
+</html>
