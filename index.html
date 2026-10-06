@@ -52,7 +52,7 @@
 <body>
 <header>
   <h1>Macros tracker</h1>
-  <p>Slide across a chart. The dotted line snaps to a day and shows the numbers. All closed days so far: Fri 2 through Mon 5.</p>
+  <p>Slide across a chart. The dotted line snaps to a day and shows the numbers. All closed days so far: Fri 2 through Tue 6.</p>
 </header>
 <main>
   <section>
@@ -83,12 +83,13 @@
 </main>
 <div id="tip"></div>
 <script>
-const days = ["Fri 2","Sat 3","Sun 4","Mon 5"];
+const days = ["Fri 2","Sat 3","Sun 4","Mon 5","Tue 6"];
 const logged = {
   "Fri 2": { kcal: 1510, protein: 130, fat: 62 },
   "Sat 3": { kcal: 825, protein: 95, fat: 20 },
   "Sun 4": { kcal: 1238, protein: 130, fat: 42 },
-  "Mon 5": { kcal: 2062, protein: 143, fat: 94 }
+  "Mon 5": { kcal: 2062, protein: 143, fat: 94 },
+  "Tue 6": { kcal: 947, protein: 95.7, fat: 37.4 }
 };
 const tip = document.getElementById("tip");
 let activeTip = null;
