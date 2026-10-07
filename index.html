@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="data-updated" content="2026-10-06T23:18+08:00">
+<meta name="data-updated" content="2026-10-08T00:12+08:00">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Macros tracker</title>
 <style>
@@ -53,7 +53,7 @@
 <body>
 <header>
   <h1>Macros tracker</h1>
-  <p>Slide across a chart. The dotted line snaps to a day and shows the numbers. All closed days so far: Fri 2 through Tue 6.</p>
+  <p>Slide across a chart. The dotted line snaps to a day and shows the numbers. All closed days so far: Fri 2 through Wed 7.</p>
 </header>
 <main>
   <section>
@@ -84,13 +84,14 @@
 </main>
 <div id="tip"></div>
 <script>
-const days = ["Fri 2","Sat 3","Sun 4","Mon 5","Tue 6"];
+const days = ["Fri 2","Sat 3","Sun 4","Mon 5","Tue 6","Wed 7"];
 const logged = {
   "Fri 2": { kcal: 1510, protein: 130, fat: 62 },
   "Sat 3": { kcal: 825, protein: 95, fat: 20 },
   "Sun 4": { kcal: 1238, protein: 130, fat: 42 },
   "Mon 5": { kcal: 2062, protein: 143, fat: 94 },
-  "Tue 6": { kcal: 947, protein: 95.7, fat: 37.4 }
+  "Tue 6": { kcal: 947, protein: 95.7, fat: 37.4 },
+  "Wed 7": { kcal: 812, protein: 113.1, fat: 16.2 }
 };
 const tip = document.getElementById("tip");
 let activeTip = null;
